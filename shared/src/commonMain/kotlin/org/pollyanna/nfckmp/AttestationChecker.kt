@@ -1,4 +1,4 @@
 package org.pollyanna.nfckmp
 
-class PollyPaymentManager {
+class AttestationChecker {
 }
