@@ -4,15 +4,13 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
 
-class AndroidKeyProvider(private val alias: String): KeyProvider {
+class AndroidPrivateKeyDataSource(private val alias: String): PrivateKeyDataSource {
     private val provider = "AndroidKeyStore"
     private val keyStore = KeyStore.getInstance(provider).apply { load(null) }
 
-
-    override fun getLocalKey(): String? {
-        return keyStore.getKey(alias, null)?.toString()
-    }
+    override fun getLocalKey(): PrivateKey? = keyStore.getKey(alias, null) as? PrivateKey
 
     override fun getCertificateChain(): List<String>? {
         return keyStore.getCertificateChain(alias)?.toList()?.map { it.toString() }

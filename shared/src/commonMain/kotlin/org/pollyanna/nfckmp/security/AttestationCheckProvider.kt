@@ -6,7 +6,7 @@ interface AttestationCheckProvider {
      * Perform local environment checks (Root/Debug).
      * Should throw a specific SecurityException if a hard violation is found.
      */
-    fun checkLocalSecurity()
+    fun checkLocalSecurity(): Boolean
 
     /**
      * Request a hardware-backed assertion object from the OS.

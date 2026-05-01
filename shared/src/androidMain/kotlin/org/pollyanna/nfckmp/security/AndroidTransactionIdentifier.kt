@@ -4,13 +4,13 @@ import android.util.Base64
 import java.security.PrivateKey
 import java.security.Signature
 
-class AndroidTransactionIdentifier(private val keyProvider: KeyProvider): TransactionIdentifier {
+class AndroidTransactionIdentifier(private val privateKeyDataSource: PrivateKeyDataSource): TransactionIdentifier {
     override suspend fun getAttestationCertificate(challenge: ByteArray?): List<String> {
-        if (!keyProvider.exists()) {
-            keyProvider.generateRsaKeyPair(challenge)
+        if (!privateKeyDataSource.exists()) {
+            privateKeyDataSource.generateRsaKeyPair(challenge)
         }
 
-        val chain = keyProvider.getCertificateChain()
+        val chain = privateKeyDataSource.getCertificateChain()
 
         return chain?.map { cert ->
             val byteArray = cert.toCertification().encoded
@@ -20,8 +20,8 @@ class AndroidTransactionIdentifier(private val keyProvider: KeyProvider): Transa
     }
 
     override fun signTransaction(data: ByteArray): ByteArray {
-        if (!keyProvider.exists()) throw IllegalStateException(EXCEPTION_KEYSTORE_NOT_EXISTED)
-        val privateKey = keyProvider.getLocalKey() as? PrivateKey
+        if (!privateKeyDataSource.exists()) throw IllegalStateException(EXCEPTION_KEYSTORE_NOT_EXISTED)
+        val privateKey = privateKeyDataSource.getLocalKey() as? PrivateKey
             ?: throw SecurityException(EXCEPTION_NO_LOCAL_KEY)
         return try {
             Signature.getInstance(ALGORITHM).run {
@@ -46,7 +46,7 @@ class AndroidTransactionIdentifier(private val keyProvider: KeyProvider): Transa
     companion object {
         private const val ALGORITHM = "SHA256withRSA"
         private const val EXCEPTION_KEYSTORE_NOT_EXISTED = "Key not initialized. Call initialize() first."
-        private const val EXCEPTION_NO_LOCAL_KEY = "Hardware-backed identity key not found or invalid. Ensure the terminal is properly initialized."
+        private const val EXCEPTION_NO_LOCAL_KEY = "Hardware-backed identity key not found or invalid."
         private const val EXCEPTION_TRANSACTION_ERROR = "Failed to sign transaction data due to a hardware execution error."
     }
 }
