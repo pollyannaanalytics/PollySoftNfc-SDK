@@ -24,10 +24,14 @@ kotlin {
     
     sourceSets {
         commonMain.dependencies {
-            // put your Multiplatform dependencies here
+            implementation(libs.ktor.utils)
+            implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        androidMain.dependencies {
+            implementation(libs.security.crypto)
         }
     }
 }
@@ -41,5 +45,8 @@ android {
     }
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+    }
+    buildFeatures {
+        buildConfig = true
     }
 }

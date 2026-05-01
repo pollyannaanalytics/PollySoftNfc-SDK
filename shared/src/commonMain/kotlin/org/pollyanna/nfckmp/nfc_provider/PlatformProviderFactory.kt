@@ -1,5 +1,7 @@
 package org.pollyanna.nfckmp.nfc_provider
 
+import org.pollyanna.nfckmp.security.AttestationCheckProvider
+
 /**
  * Platform-specific factory responsible for initializing the scanning infrastructure.
  *
@@ -12,6 +14,7 @@ package org.pollyanna.nfckmp.nfc_provider
  * This is an 'expect' class to allow heterogeneous constructors across platforms
  * while maintaining a unified interface for the common module.
  */
-expect class ScannerFactory {
-    fun create(): PaymentCardScanner
+expect class PlatformProviderFactory {
+    fun createScanner(): PaymentCardScanDataSource
+    fun createAttestationChecker(): AttestationCheckProvider
 }
