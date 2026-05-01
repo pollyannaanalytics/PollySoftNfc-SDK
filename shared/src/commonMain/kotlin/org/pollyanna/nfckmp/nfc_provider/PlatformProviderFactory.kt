@@ -1,20 +1,21 @@
 package org.pollyanna.nfckmp.nfc_provider
 
-import org.pollyanna.nfckmp.security.AttestationCheckProvider
+import org.pollyanna.nfckmp.PollyLogger
+import org.pollyanna.nfckmp.PollyPaymentEngine
+import org.pollyanna.nfckmp.network.BackendService
+import org.pollyanna.nfckmp.security.DeviceSecurityRepository
 
-/**
- * Platform-specific factory responsible for initializing the scanning infrastructure.
- *
- * Responsibilities:
- * 1. Encapsulates platform dependencies (e.g., Android [Context]).
- * 2. Decouples the business logic layer from hardware-specific implementations.
- * 3. Acts as a bridge between the [PollyPaymentEngine] and the native NFC hardware APIs.
- *
- * Design Note:
- * This is an 'expect' class to allow heterogeneous constructors across platforms
- * while maintaining a unified interface for the common module.
- */
 expect class PlatformProviderFactory {
-    fun createScanner(): PaymentCardScanDataSource
-    fun createAttestationChecker(): AttestationCheckProvider
+    fun createCardReadRepository(): CardReadRepository
+    fun createDeviceSecurityRepository(): DeviceSecurityRepository
 }
+
+fun PlatformProviderFactory.createEngine(
+    backendService: BackendService,
+    logger: PollyLogger = PollyLogger.Default,
+): PollyPaymentEngine = PollyPaymentEngine(
+    cardReadRepository = createCardReadRepository(),
+    backendService = backendService,
+    deviceSecurityRepository = createDeviceSecurityRepository(),
+    logger = logger,
+)
