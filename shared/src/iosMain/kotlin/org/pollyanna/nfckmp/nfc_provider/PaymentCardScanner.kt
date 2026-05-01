@@ -2,10 +2,10 @@ package org.pollyanna.nfckmp.nfc_provider
 
 import org.pollyanna.nfckmp.model.ScannerType
 
-class IosNfcScanner (
+class IosNfcScanDataSource (
     override val scannerType: ScannerType = ScannerType.IOS
-) : PaymentCardScanner {
-    override suspend fun scan(): ByteArray {
+) : PaymentCardScanDataSource {
+    override suspend fun scan(amount: Double): ByteArray {
 
         // mock ios nfc api
         return byteArrayOf(0x00)

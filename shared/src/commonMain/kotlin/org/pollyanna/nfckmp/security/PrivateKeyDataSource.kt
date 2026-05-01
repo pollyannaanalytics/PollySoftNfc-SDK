@@ -1,6 +1,6 @@
 package org.pollyanna.nfckmp.security
 
-interface KeyProvider {
+interface PrivateKeyDataSource {
     fun getLocalKey(): Any?
     fun getCertificateChain(): List<String>?
     fun generateRsaKeyPair(challenge: ByteArray?)
