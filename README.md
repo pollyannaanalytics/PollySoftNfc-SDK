@@ -34,12 +34,11 @@ A Kotlin Multiplatform SDK for secure NFC-based contactless payment processing. 
 flowchart TD
     subgraph host["Host App"]
         Factory["PlatformProviderFactory\n─────────────────────\nComposition root\nHolds Android Context\nConstructs & wires all deps"]
-        BS["YourBackendService\n─────────────────────\nYou implement this\nOwns the real network layer"]
     end
 
     subgraph sdk["SDK · commonMain  (platform-agnostic)"]
         Engine["PollyPaymentEngine\n─────────────────────\nOrchestrator\nDepends only on interfaces\nNo platform code"]
-
+        BS["YourBackendService\n─────────────────────\nYou implement this\nOwns the real network layer"]
         CR(["CardReadRepository\nNFC hardware boundary"])
         DSR(["DeviceSecurityRepository\nPlatform crypto boundary"])
         BSI(["BackendService\nNetwork boundary"])
@@ -69,6 +68,13 @@ classDiagram
             +createDeviceSecurityRepository() DeviceSecurityRepository
             +createEngine(backendService) PollyPaymentEngine
         }
+    }
+    
+    namespace RealBackend {
+        class BackendServiceImpl
+    }
+
+    namespace SDKCommonMain {
         class BackendService {
             <<interface>>
             +getRegistrationChallenge() String
@@ -76,9 +82,6 @@ classDiagram
             +getPublicKey() ByteArray
             +submitDeviceBinding(payload) Unit
         }
-    }
-
-    namespace SDKCommonMain {
         class PollyPaymentEngine {
             +paymentState : StateFlow~PaymentState~
             +initialize()
@@ -119,6 +122,7 @@ classDiagram
 
     AndroidCardReadRepository       ..|> CardReadRepository
     AndroidDeviceSecurityRepository ..|> DeviceSecurityRepository
+    BackendServiceImpl ..|> BackendService : network communication
 
     AndroidCardReadRepository       *-- AndroidNfcScanDataSource
     AndroidCardReadRepository       *-- AndroidAttestationCheckProvider
