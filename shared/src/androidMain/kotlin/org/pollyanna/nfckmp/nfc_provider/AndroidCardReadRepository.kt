@@ -10,6 +10,12 @@ class AndroidCardReadRepository(
     override suspend fun readSecureData(amount: Double): CardReadResult {
         if (!securityChecker.checkLocalSecurity())
             return CardReadResult.Failure.SecurityViolation("Device doesn't support local security")
-        return CardReadResult.Success(scanner.scan(amount))
+
+        val rawData = scanner.scan(amount)
+        try {
+            return CardReadResult.Success(rawData)
+        } finally {
+            scanner.clearSensitiveData()
+        }
     }
 }

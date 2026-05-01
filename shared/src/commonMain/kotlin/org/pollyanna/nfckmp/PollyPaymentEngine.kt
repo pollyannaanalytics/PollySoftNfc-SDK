@@ -20,11 +20,49 @@ class PollyPaymentEngine(
     private val _paymentState = MutableStateFlow<PaymentState>(PaymentState.Idle)
     val paymentState: StateFlow<PaymentState> = _paymentState.asStateFlow()
 
+    private var isInitialized = false
+
+    suspend fun initialize() {
+        initFlow().collect { _paymentState.value = it }
+    }
+
     suspend fun startTransaction(amount: Double) {
         transactionFlow(amount).collect { _paymentState.value = it }
     }
 
+    private fun initFlow() = flow {
+        logger.log(TAG, "Initializing device")
+        emit(PaymentState.Initializing)
+
+        try {
+            logger.log(TAG, "Fetching registration challenge")
+            val challenge = backendService.getRegistrationChallenge()
+
+            logger.log(TAG, "Generating attestation certificate")
+            val certChain = securityRepository.getRegistrationCertificate(challenge)
+
+            logger.log(TAG, "Registering device with backend (${certChain?.size} certs)")
+            certChain?.let {
+                backendService.registerDevice(certChain)
+                isInitialized = true
+                logger.log(TAG, "Device initialized successfully")
+                emit(PaymentState.Idle)
+            }?: run {
+                logger.log(TAG, "Device initialization failed: certificateChain = null")
+            }
+        } catch (e: Exception) {
+            logger.log(TAG, "Initialization failed: ${e.message}")
+            emit(PaymentState.Failed.BackendError("init error: ${e.message}"))
+        }
+    }
+
     private fun transactionFlow(amount: Double) = flow {
+        if (!isInitialized) {
+            logger.log(TAG, "Transaction attempted before initialization")
+            emit(PaymentState.Failed.NotInitialized)
+            return@flow
+        }
+
         logger.log(TAG, "Starting transaction, amount=$amount")
         emit(PaymentState.Idle)
 
@@ -81,6 +119,6 @@ class PollyPaymentEngine(
     }
 
     private companion object {
-        const val TAG = "startTransaction"
+        const val TAG = "PollyPaymentEngine"
     }
 }

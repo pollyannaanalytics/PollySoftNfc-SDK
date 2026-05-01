@@ -35,4 +35,8 @@ class AndroidSecurityRepository(
             publicKey.fill(0.toByte())
         }
     }
+
+    override suspend fun getRegistrationCertificate(challenge: ByteArray): ByteArray? {
+        return transactionIdentifier.getAttestationCertificate(challenge)
+    }
 }

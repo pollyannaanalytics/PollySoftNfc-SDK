@@ -5,17 +5,16 @@ import java.security.PrivateKey
 import java.security.Signature
 
 class AndroidTransactionIdentifier(private val privateKeyDataSource: PrivateKeyDataSource): TransactionIdentifier {
-    override suspend fun getAttestationCertificate(challenge: ByteArray?): List<String> {
+    override suspend fun getAttestationCertificate(challenge: ByteArray?): ByteArray? {
         if (!privateKeyDataSource.exists()) {
             privateKeyDataSource.generateRsaKeyPair(challenge)
         }
 
         val chain = privateKeyDataSource.getCertificateChain()
 
-        return chain?.map { cert ->
-            val byteArray = cert.toCertification().encoded
-            Base64.encodeToString(byteArray, Base64.NO_WRAP)
-        } ?: emptyList()
+        return chain?.fold(byteArrayOf()) { acc, cert ->
+            acc + cert.toCertification().encoded
+        }
 
     }
 

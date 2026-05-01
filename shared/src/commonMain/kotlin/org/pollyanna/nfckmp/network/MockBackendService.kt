@@ -13,6 +13,13 @@ class MockBackendService : BackendService {
         return "mock-registration-challenge".encodeToByteArray()
     }
 
+    override suspend fun registerDevice(certificateChain: ByteArray) {
+        delay(400)
+        refreshTokenIfNeeded()
+        println("[MockBackendService] Device registered with token=$accessToken")
+        println("[MockBackendService]   certificate size=${certificateChain.size} bytes")
+    }
+
     override suspend fun getPublicKey(): ByteArray {
         delay(300)
         refreshTokenIfNeeded()
