@@ -16,10 +16,12 @@ material3 = "1.10.0-alpha05"
 crypto = "1.1.0-alpha06"
 ktor = "3.4.3"
 coroutines = "1.10.2"
+pollySdk = "0.1.1"
 
 [libraries]
 security-crypto = {module = "androidx.security:security-crypto", version.ref = "crypto"}
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 ktor-utils = {module = "io.ktor:ktor-utils", version.ref = "ktor"}
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
