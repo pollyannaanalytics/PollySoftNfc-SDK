@@ -3,6 +3,7 @@ package org.pollyanna.nfckmp.security
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
+import org.pollyanna.nfckmp.shared.BuildConfig
 import java.io.File
 import java.util.Scanner
 
