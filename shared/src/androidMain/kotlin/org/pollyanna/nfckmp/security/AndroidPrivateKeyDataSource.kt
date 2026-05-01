@@ -2,6 +2,7 @@ package org.pollyanna.nfckmp.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import org.pollyanna.nfckmp.model.AttestationResult
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.PrivateKey
@@ -12,8 +13,14 @@ class AndroidPrivateKeyDataSource(private val alias: String): PrivateKeyDataSour
 
     override fun getLocalKey(): PrivateKey? = keyStore.getKey(alias, null) as? PrivateKey
 
-    override fun getCertificateChain(): List<String>? {
-        return keyStore.getCertificateChain(alias)?.toList()?.map { it.toString() }
+    override fun getCertificateChain(): AttestationResult {
+        val chain = keyStore.getCertificateChain(alias)
+
+        val bytesChain = chain.map { it.encoded }
+        return AttestationResult(
+            leafCertificate = bytesChain.first(),
+            intermediateCertificates = bytesChain.drop(1)
+        )
     }
 
     override fun generateRsaKeyPair(challenge: ByteArray?) {

@@ -1,5 +1,6 @@
 package org.pollyanna.nfckmp
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -10,13 +11,14 @@ import org.pollyanna.nfckmp.model.SecurityError
 import org.pollyanna.nfckmp.model.SecurityResult
 import org.pollyanna.nfckmp.network.BackendService
 import org.pollyanna.nfckmp.nfc_provider.CardReadRepository
-import org.pollyanna.nfckmp.security.SecurityRepository
+import org.pollyanna.nfckmp.security.DeviceSecurityRepository
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class PollyPaymentEngineTest {
 
     // region fakes
@@ -65,19 +67,19 @@ class PollyPaymentEngineTest {
     private fun securityRepository(
         cert: ByteArray? = byteArrayOf(0x30, 0x82.toByte()),
         payload: SecurePayload = SecurePayload(byteArrayOf(4, 5), byteArrayOf(6, 7)),
-    ) = object : SecurityRepository {
+    ) = object : DeviceSecurityRepository {
         override suspend fun getRegistrationCertificate(challenge: ByteArray) = cert
         override suspend fun encrypt(rawData: ByteArray, publicKey: ByteArray) =
             SecurityResult.Success(payload)
     }
 
-    private fun securityRepositoryCertNull() = object : SecurityRepository {
+    private fun securityRepositoryCertNull() = object : DeviceSecurityRepository {
         override suspend fun getRegistrationCertificate(challenge: ByteArray): ByteArray? = null
         override suspend fun encrypt(rawData: ByteArray, publicKey: ByteArray) =
             SecurityResult.Success(SecurePayload(byteArrayOf(4, 5), byteArrayOf(6, 7)))
     }
 
-    private fun securityRepositoryEncryptFails() = object : SecurityRepository {
+    private fun securityRepositoryEncryptFails() = object : DeviceSecurityRepository {
         override suspend fun getRegistrationCertificate(challenge: ByteArray) = byteArrayOf(0x30)
         override suspend fun encrypt(rawData: ByteArray, publicKey: ByteArray) =
             SecurityResult.Failure(SecurityError.EncryptionFailed(RuntimeException("Encryption error")))
@@ -96,11 +98,11 @@ class PollyPaymentEngineTest {
     private fun engine(
         backendService: BackendService = backendService(),
         cardReadRepository: CardReadRepository = cardReader(),
-        securityRepository: SecurityRepository = securityRepository(),
+        deviceSecurityRepository: DeviceSecurityRepository = securityRepository(),
     ) = PollyPaymentEngine(
         cardReadRepository = cardReadRepository,
         backendService = backendService,
-        securityRepository = securityRepository,
+        deviceSecurityRepository = deviceSecurityRepository,
         logger = PollyLogger.Silent,
     )
 
@@ -155,7 +157,7 @@ class PollyPaymentEngineTest {
 
     @Test
     fun initCertNullLeavesEngineUninitialized() = runTest {
-        val engine = engine(securityRepository = securityRepositoryCertNull())
+        val engine = engine(deviceSecurityRepository = securityRepositoryCertNull())
         engine.initialize()
         // cert null → silent failure, state stays at Initializing, engine not ready
         assertEquals(PaymentState.Initializing, engine.paymentState.value)
@@ -167,7 +169,7 @@ class PollyPaymentEngineTest {
     fun initPassesChallengeToSecurityRepository() = runTest {
         val expectedChallenge = byteArrayOf(0xAA.toByte())
         var receivedChallenge: ByteArray? = null
-        val captureSecurity = object : SecurityRepository {
+        val captureSecurity = object : DeviceSecurityRepository {
             override suspend fun getRegistrationCertificate(challenge: ByteArray): ByteArray {
                 receivedChallenge = challenge
                 return byteArrayOf(0x30)
@@ -175,7 +177,7 @@ class PollyPaymentEngineTest {
             override suspend fun encrypt(rawData: ByteArray, publicKey: ByteArray) =
                 SecurityResult.Success(SecurePayload(byteArrayOf(), byteArrayOf()))
         }
-        engine(securityRepository = captureSecurity).initialize()
+        engine(deviceSecurityRepository = captureSecurity).initialize()
         assertContentEquals(expectedChallenge, receivedChallenge)
     }
 
@@ -185,7 +187,7 @@ class PollyPaymentEngineTest {
         var receivedCert: ByteArray? = null
         val engine = engine(
             backendService = backendService(onRegister = { receivedCert = it }),
-            securityRepository = securityRepository(cert = fakeCert),
+            deviceSecurityRepository = securityRepository(cert = fakeCert),
         )
         engine.initialize()
         assertContentEquals(fakeCert, receivedCert)
@@ -247,7 +249,7 @@ class PollyPaymentEngineTest {
 
     @Test
     fun encryptionFailureEmitsLocalSecurityFailed() = runTest {
-        val engine = engine(securityRepository = securityRepositoryEncryptFails())
+        val engine = engine(deviceSecurityRepository = securityRepositoryEncryptFails())
         engine.initialize()
         engine.startTransaction(19.99)
         assertEquals(PaymentState.Failed.LocalSecurityFailed, engine.paymentState.value)
@@ -298,7 +300,7 @@ class PollyPaymentEngineTest {
         val publicKey = byteArrayOf(1, 2, 3, 4)
         val engine = engine(
             backendService = backendService(publicKey = publicKey),
-            securityRepository = securityRepositoryEncryptFails(),
+            deviceSecurityRepository = securityRepositoryEncryptFails(),
         )
         engine.initAndStart()
         assertContentEquals(ByteArray(4), publicKey)

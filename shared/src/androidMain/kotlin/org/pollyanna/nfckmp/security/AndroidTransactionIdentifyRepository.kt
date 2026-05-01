@@ -4,18 +4,16 @@ import android.util.Base64
 import java.security.PrivateKey
 import java.security.Signature
 
-class AndroidTransactionIdentifier(private val privateKeyDataSource: PrivateKeyDataSource): TransactionIdentifier {
-    override suspend fun getAttestationCertificate(challenge: ByteArray?): ByteArray? {
+class AndroidTransactionIdentifyRepository(private val privateKeyDataSource: PrivateKeyDataSource): TransactionIdentifyRepository {
+    override suspend fun getAttestationCertificate(challenge: ByteArray?): ByteArray {
         if (!privateKeyDataSource.exists()) {
             privateKeyDataSource.generateRsaKeyPair(challenge)
         }
 
-        val chain = privateKeyDataSource.getCertificateChain()
+        val attestation = privateKeyDataSource.getCertificateChain()
 
-        return chain?.fold(byteArrayOf()) { acc, cert ->
-            acc + cert.toCertification().encoded
-        }
-
+        return (listOf(attestation.leafCertificate) + attestation.intermediateCertificates)
+            .fold(byteArrayOf()) { acc, bytes -> acc + bytes }
     }
 
     override fun signTransaction(data: ByteArray): ByteArray {
@@ -30,15 +28,6 @@ class AndroidTransactionIdentifier(private val privateKeyDataSource: PrivateKeyD
             }
         } catch (e: Exception) {
             throw SecurityException(EXCEPTION_TRANSACTION_ERROR, e)
-        }
-    }
-
-    fun String.toCertification(): java.security.cert.X509Certificate {
-        val factory = java.security.cert.CertificateFactory.getInstance("X.509")
-        val decodedBytes = Base64.decode(this, Base64.NO_WRAP)
-
-        return decodedBytes.inputStream().use {
-            factory.generateCertificate(it) as java.security.cert.X509Certificate
         }
     }
 

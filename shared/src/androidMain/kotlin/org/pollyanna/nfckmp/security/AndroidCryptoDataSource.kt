@@ -9,7 +9,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 
-class AndroidCryptoProvider(private val context: Context): CryptoProvider {
+class AndroidCryptoDataSource(private val context: Context) : CryptoDataSource {
     override fun encrypt(rawData: ByteArray, backendPublicKey: ByteArray): ByteArray {
         val keySpec = X509EncodedKeySpec(backendPublicKey)
         val publicKey = KeyFactory.getInstance("RSA").generatePublic(keySpec)
@@ -19,7 +19,10 @@ class AndroidCryptoProvider(private val context: Context): CryptoProvider {
         )
         cipher.init(Cipher.ENCRYPT_MODE, publicKey, oaepSpec)
         val encryptedData = cipher.doFinal(rawData)
-        return Base64.encode(encryptedData, Base64.NO_WRAP)
+        val base64Encoded = Base64.encode(encryptedData, Base64.NO_WRAP)
+        encryptedData.fill(0.toByte())
+        return base64Encoded
+
     }
 
 

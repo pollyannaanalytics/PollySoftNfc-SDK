@@ -4,10 +4,10 @@ import org.pollyanna.nfckmp.model.SecurePayload
 import org.pollyanna.nfckmp.model.SecurityError
 import org.pollyanna.nfckmp.model.SecurityResult
 
-class AndroidSecurityRepository(
-    private val cryptoProvider: CryptoProvider,
-    private val transactionIdentifier: TransactionIdentifier
-) : SecurityRepository {
+class AndroidDeviceSecurityRepository(
+    private val cryptoDataSource: CryptoDataSource,
+    private val transactionIdentifyRepository: TransactionIdentifyRepository
+) : DeviceSecurityRepository {
 
     override suspend fun encrypt(
         rawData: ByteArray,
@@ -16,8 +16,8 @@ class AndroidSecurityRepository(
         var encryptedData: ByteArray? = null
 
         return try {
-            encryptedData = cryptoProvider.encrypt(rawData, publicKey)
-            val signature = transactionIdentifier.signTransaction(encryptedData)
+            encryptedData = cryptoDataSource.encrypt(rawData, publicKey)
+            val signature = transactionIdentifyRepository.signTransaction(encryptedData)
             SecurityResult.Success(
                 SecurePayload(
                     encryptedData = encryptedData,
@@ -37,6 +37,6 @@ class AndroidSecurityRepository(
     }
 
     override suspend fun getRegistrationCertificate(challenge: ByteArray): ByteArray? {
-        return transactionIdentifier.getAttestationCertificate(challenge)
+        return transactionIdentifyRepository.getAttestationCertificate(challenge)
     }
 }

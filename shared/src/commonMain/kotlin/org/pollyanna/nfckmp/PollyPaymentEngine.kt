@@ -9,12 +9,12 @@ import org.pollyanna.nfckmp.model.PaymentState
 import org.pollyanna.nfckmp.model.SecurityResult
 import org.pollyanna.nfckmp.network.BackendService
 import org.pollyanna.nfckmp.nfc_provider.CardReadRepository
-import org.pollyanna.nfckmp.security.SecurityRepository
+import org.pollyanna.nfckmp.security.DeviceSecurityRepository
 
 class PollyPaymentEngine(
     private val cardReadRepository: CardReadRepository,
     private val backendService: BackendService,
-    private val securityRepository: SecurityRepository,
+    private val deviceSecurityRepository: DeviceSecurityRepository,
     private val logger: PollyLogger = PollyLogger.Default,
 ) {
     private val _paymentState = MutableStateFlow<PaymentState>(PaymentState.Idle)
@@ -39,7 +39,7 @@ class PollyPaymentEngine(
             val challenge = backendService.getRegistrationChallenge()
 
             logger.log(TAG, "Generating attestation certificate")
-            val certChain = securityRepository.getRegistrationCertificate(challenge)
+            val certChain = deviceSecurityRepository.getRegistrationCertificate(challenge)
 
             logger.log(TAG, "Registering device with backend (${certChain?.size} certs)")
             certChain?.let {
@@ -84,7 +84,7 @@ class PollyPaymentEngine(
                     logger.log(TAG, "Card read succeeded, encrypting data")
                     emit(PaymentState.Communicating)
 
-                    val securityResult = securityRepository.encrypt(cardResult.rawData, backendKey)
+                    val securityResult = deviceSecurityRepository.encrypt(cardResult.rawData, backendKey)
                     cardResult.clear()
 
                     when (securityResult) {
