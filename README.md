@@ -57,92 +57,79 @@ flowchart TD
 
 ---
 
-### Part 2 — Dependency Injection Diagram (PlantUML)
+### Part 2 — Dependency Injection Diagram
 
-```plantuml
-@startuml
-!theme plain
-skinparam packageStyle rectangle
-skinparam classAttributeIconSize 0
+```mermaid
+classDiagram
+    namespace HostApp {
+        class PlatformProviderFactory {
+            <<Android>>
+            -context : Context
+            +createCardReadRepository() CardReadRepository
+            +createDeviceSecurityRepository() DeviceSecurityRepository
+            +createEngine(backendService) PollyPaymentEngine
+        }
+        class BackendService {
+            <<interface>>
+            +getRegistrationChallenge() String
+            +registerDevice(certs) Unit
+            +getPublicKey() ByteArray
+            +submitDeviceBinding(payload) Unit
+        }
+    }
 
-package "Host App" {
-  class PlatformProviderFactory <<Android>> {
-    - context: Context
-    + createCardReadRepository(): CardReadRepository
-    + createDeviceSecurityRepository(): DeviceSecurityRepository
-    + createEngine(backendService): PollyPaymentEngine
-  }
+    namespace SDKCommonMain {
+        class PollyPaymentEngine {
+            +paymentState : StateFlow~PaymentState~
+            +initialize()
+            +startTransaction(amount)
+        }
+        class CardReadRepository {
+            <<interface>>
+            +readSecureData(amount) CardReadResult
+        }
+        class DeviceSecurityRepository {
+            <<interface>>
+            +getRegistrationCertificate(challenge) List~String~
+            +encrypt(data, publicKey) SecurityResult
+        }
+    }
 
-  interface BackendService <<implement in host app>> {
-    + getRegistrationChallenge(): String
-    + registerDevice(certs: List<String>): Unit
-    + getPublicKey(): ByteArray
-    + submitDeviceBinding(payload): Unit
-  }
-}
+    namespace SDKAndroidMain {
+        class AndroidCardReadRepository {
+            -scanner : AndroidNfcScanDataSource
+            -attestationChecker : AndroidAttestationCheckProvider
+        }
+        class AndroidNfcScanDataSource
+        class AndroidAttestationCheckProvider
+        class AndroidDeviceSecurityRepository {
+            -cryptoDataSource : AndroidCryptoDataSource
+            -transactionRepo : AndroidTransactionIdentifyRepository
+        }
+        class AndroidCryptoDataSource
+        class AndroidTransactionIdentifyRepository {
+            -privateKeyDataSource : AndroidPrivateKeyDataSource
+        }
+        class AndroidPrivateKeyDataSource
+    }
 
-package "SDK — commonMain" {
-  class PollyPaymentEngine {
-    + paymentState: StateFlow<PaymentState>
-    + initialize()
-    + startTransaction(amount: Double)
-  }
+    PlatformProviderFactory ..> AndroidCardReadRepository       : creates
+    PlatformProviderFactory ..> AndroidDeviceSecurityRepository  : creates
+    PlatformProviderFactory ..> PollyPaymentEngine               : assembles
 
-  interface CardReadRepository {
-    + readSecureData(amount: Double): CardReadResult
-  }
+    AndroidCardReadRepository       ..|> CardReadRepository
+    AndroidDeviceSecurityRepository ..|> DeviceSecurityRepository
 
-  interface DeviceSecurityRepository {
-    + getRegistrationCertificate(challenge): List<String>?
-    + encrypt(data, publicKey): SecurityResult
-  }
-}
+    AndroidCardReadRepository       *-- AndroidNfcScanDataSource
+    AndroidCardReadRepository       *-- AndroidAttestationCheckProvider
+    AndroidDeviceSecurityRepository *-- AndroidCryptoDataSource
+    AndroidDeviceSecurityRepository *-- AndroidTransactionIdentifyRepository
+    AndroidTransactionIdentifyRepository *-- AndroidPrivateKeyDataSource
 
-package "SDK — androidMain" {
-  class AndroidCardReadRepository {
-    - scanner: AndroidNfcScanDataSource
-    - attestationChecker: AndroidAttestationCheckProvider
-  }
-  class AndroidNfcScanDataSource
-  class AndroidAttestationCheckProvider
-
-  class AndroidDeviceSecurityRepository {
-    - cryptoDataSource: AndroidCryptoDataSource
-    - transactionRepo: AndroidTransactionIdentifyRepository
-  }
-  class AndroidCryptoDataSource
-  class AndroidTransactionIdentifyRepository {
-    - privateKeyDataSource: AndroidPrivateKeyDataSource
-  }
-  class AndroidPrivateKeyDataSource
-}
-
-' Factory assembles the engine
-PlatformProviderFactory ..> AndroidCardReadRepository      : <<creates>>
-PlatformProviderFactory ..> AndroidDeviceSecurityRepository : <<creates>>
-PlatformProviderFactory ..> PollyPaymentEngine              : <<assembles>>
-
-' Interface implementations
-AndroidCardReadRepository      ..|> CardReadRepository
-AndroidDeviceSecurityRepository ..|> DeviceSecurityRepository
-
-' Internal composition (androidMain)
-AndroidCardReadRepository *-- AndroidNfcScanDataSource
-AndroidCardReadRepository *-- AndroidAttestationCheckProvider
-
-AndroidDeviceSecurityRepository *-- AndroidCryptoDataSource
-AndroidDeviceSecurityRepository *-- AndroidTransactionIdentifyRepository
-AndroidTransactionIdentifyRepository *-- AndroidPrivateKeyDataSource
-
-' Engine dependencies (constructor injection via interfaces)
-PollyPaymentEngine --> CardReadRepository      : injected
-PollyPaymentEngine --> DeviceSecurityRepository : injected
-PollyPaymentEngine --> BackendService           : injected
-
-@enduml
+    PollyPaymentEngine --> CardReadRepository       : injected
+    PollyPaymentEngine --> DeviceSecurityRepository  : injected
+    PollyPaymentEngine --> BackendService            : injected
 ```
-
-> Render with [PlantUML](https://plantuml.com) or paste the block into the [online editor](https://www.plantuml.com/plantuml).
 
 ### Module Layout
 
