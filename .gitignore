@@ -11,7 +11,6 @@
 .mtj.tmp/
 
 # Package Files #
-*.jar
 *.war
 *.nar
 *.ear
@@ -27,8 +26,7 @@ replay_pid*
 .kotlin/
 */build/*
 local.properties
-*/gradle/*
 .gradle
 .DS_Store
 build/
-gradle/
+gradle/wrapper/gradle-wrapper.jar
