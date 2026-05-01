@@ -3,7 +3,11 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.mavenPublish)
 }
+
+group = "org.pollyanna"
+version = "0.1.0"
 
 kotlin {
     androidTarget {
@@ -33,6 +37,21 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.security.crypto)
+        }
+    }
+}
+
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/pollyannaanalytics/PollySoftNfc-SDK")
+            credentials {
+                username = providers.gradleProperty("githubActor").orNull
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("githubToken").orNull
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
         }
     }
 }
