@@ -1,8 +1,47 @@
 # PollySoftNfc SDK
 
-A Kotlin Multiplatform SDK for secure NFC-based contactless payment processing. It handles card reading, device attestation, end-to-end encryption, and backend submission — all behind a simple state-driven API.
+A Kotlin Multiplatform SDK that turns any Android device into an NFC payment terminal — no dedicated hardware required.
 
 > **Platform support:** Android only. iOS scaffolding exists but security and NFC integrations are not yet implemented.
+
+---
+
+## Overview
+
+### Who is this for?
+
+This SDK is designed for **merchants** who want to accept contactless payments using an ordinary Android phone or tablet, without buying a dedicated POS terminal.
+
+### How does it work?
+
+The **customer** experience is completely unchanged — they pay exactly as they would with Google Pay or Apple Pay: open their wallet app, tap their phone or card, done.
+
+The **merchant** simply opens their own app (which integrates this SDK) and the device is ready to receive the payment over NFC. No extra hardware needed.
+
+```
+Customer                    Merchant's Android Device
+   │                                │
+   │  opens Google / Apple Pay      │  opens merchant app
+   │  selects amount to pay         │  (PollySoftNfc SDK inside)
+   │                                │
+   │ ── taps phone / card ─────────▶│ reads NFC, encrypts data,
+   │                                │ verifies device integrity,
+   │                                │ submits to backend
+   │                                │
+   │                         Payment confirmed
+```
+
+### What does the SDK handle?
+
+| Concern | Handled by SDK |
+|---|---|
+| NFC card reading | Yes |
+| Device integrity check (root, debugger, Play Integrity) | Yes |
+| End-to-end encryption (RSA/OAEP, hardware-backed keys) | Yes |
+| Transaction signing (SHA256withRSA) | Yes |
+| Payment state management | Yes |
+| Unit tests (engine state machine, error paths, sensitive data cleanup) | Yes |
+| Backend communication | **You implement** `BackendService` |
 
 ---
 
@@ -225,11 +264,11 @@ PaymentState
 
 ---
 
-## Installation (Android Only)
+## Installation
 
-### 1. Add GitHub Packages repository
+### 1. Add the GitHub Packages repository
 
-In your project-level `settings.gradle.kts`, add the Maven repository:
+In your project-level `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
@@ -267,7 +306,7 @@ In your app-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("org.pollyanna:shared:0.1.0")
+    implementation("org.pollyanna:shared:0.1.1")
 }
 ```
 
@@ -280,16 +319,26 @@ In your `AndroidManifest.xml`:
 <uses-feature android:name="android.hardware.nfc" android:required="true" />
 ```
 
-### 5. Usage
+---
+
+## Usage
+
+### Implement BackendService
+
+The only interface you must implement is `BackendService`, which connects the SDK to your own server. A `MockBackendService` is included for local testing and development.
+
+| Method | Called when | What to send | What to return |
+|---|---|---|---|
+| `getRegistrationChallenge()` | Device initialization starts | — | A random nonce (`ByteArray`, e.g. 32 bytes) to bind the key generation to this specific request |
+| `registerDevice(certificateChain)` | After hardware key generation | DER-encoded X.509 certificate chain (leaf + intermediates, concatenated) from Android Keystore attestation | — |
+| `getPublicKey()` | Start of every transaction | — | Your server's RSA public key in DER format; the SDK uses it to encrypt card data so only your server can decrypt it |
+| `submitDeviceBinding(payload, integrityToken)` | After card data is encrypted and signed | `payload.encryptedData` (RSA/OAEP encrypted card data), `payload.signature` (SHA256withRSA over encrypted data), `integrityToken` (Play Integrity JWT — verify with Google before processing) | — |
+
+### Wire up the engine
 
 ```kotlin
-import org.pollyanna.nfckmp.PollyPaymentEngine
-import org.pollyanna.nfckmp.nfc_provider.PlatformProviderFactory
-import org.pollyanna.nfckmp.nfc_provider.createEngine
-
-// In your Activity or ViewModel
-val factory = PlatformProviderFactory(context)
-val engine = factory.createEngine(backendService = YourBackendServiceImpl())
+val engine = PlatformProviderFactory(context)
+    .createEngine(backendService = YourBackendServiceImpl())
 
 // Observe state
 lifecycleScope.launch {
@@ -300,34 +349,16 @@ lifecycleScope.launch {
             is PaymentState.Communicating  -> showLoadingUI()
             is PaymentState.Success        -> showSuccess()
             is PaymentState.Failed         -> showError(state)
-            else                           -> Unit
         }
     }
 }
 
 // Initialize once (e.g. on app start)
-lifecycleScope.launch {
-    engine.initialize()
-}
+lifecycleScope.launch { engine.initialize() }
 
-// Start a transaction
-lifecycleScope.launch {
-    engine.startTransaction(amount = 49.99)
-}
+// Start a transaction when the merchant is ready to receive payment
+lifecycleScope.launch { engine.startTransaction(amount = 49.99) }
 ```
-
-You must implement the `BackendService` interface to connect the SDK to your own server:
-
-```kotlin
-interface BackendService {
-    suspend fun fetchChallenge(): String
-    suspend fun registerDevice(certificateChain: List<String>): String   // returns access token
-    suspend fun fetchBackendPublicKey(): String
-    suspend fun submitTransaction(request: TransactionRequest): Boolean
-}
-```
-
-A `MockBackendService` is included for local testing and development.
 
 ---
 
@@ -336,8 +367,8 @@ A `MockBackendService` is included for local testing and development.
 A new version is published to GitHub Packages automatically when a version tag is pushed:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 The workflow (`.github/workflows/publish.yml`) builds and publishes the `:shared` module to:
