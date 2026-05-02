@@ -26,12 +26,13 @@ class MockBackendService : BackendService {
         return MOCK_PUBLIC_KEY.encodeToByteArray()
     }
 
-    override suspend fun submitDeviceBinding(payload: SecurePayload) {
+    override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String) {
         delay(500)
         refreshTokenIfNeeded()
         println("[MockBackendService] Device binding submitted with token=$accessToken")
         println("[MockBackendService]   encryptedData size=${payload.encryptedData.size} bytes")
         println("[MockBackendService]   signature size=${payload.signature.size} bytes")
+        println("[MockBackendService]   integrityToken=${integrityToken.take(20)}...")
     }
 
     private fun refreshTokenIfNeeded() {

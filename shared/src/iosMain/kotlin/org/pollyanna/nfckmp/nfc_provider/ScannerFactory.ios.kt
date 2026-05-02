@@ -6,7 +6,7 @@ import org.pollyanna.nfckmp.security.IosDeviceSecurityRepository
 actual class PlatformProviderFactory {
 
     actual fun createCardReadRepository(): CardReadRepository {
-        return IosCardReadRepository(IosNfcScanDataSource())
+        return IosCardReadRepository(IosNfcScanDataSource(), IosAttestationCheckProvider())
     }
 
     actual fun createDeviceSecurityRepository(): DeviceSecurityRepository {

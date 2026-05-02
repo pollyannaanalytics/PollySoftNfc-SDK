@@ -31,14 +31,14 @@ class PollyPaymentEngineTest {
         override suspend fun getRegistrationChallenge() = byteArrayOf(0xAA.toByte())
         override suspend fun registerDevice(certificateChain: ByteArray) = onRegister(certificateChain)
         override suspend fun getPublicKey() = publicKey
-        override suspend fun submitDeviceBinding(payload: SecurePayload) = onSubmit()
+        override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String) = onSubmit()
     }
 
     private fun backendServiceChallengeFails() = object : BackendService {
         override suspend fun getRegistrationChallenge(): ByteArray = throw RuntimeException("Network unavailable")
         override suspend fun registerDevice(certificateChain: ByteArray) {}
         override suspend fun getPublicKey() = byteArrayOf(1, 2, 3)
-        override suspend fun submitDeviceBinding(payload: SecurePayload) {}
+        override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String) {}
     }
 
     private fun backendServiceRegisterFails() = object : BackendService {
@@ -46,21 +46,21 @@ class PollyPaymentEngineTest {
         override suspend fun registerDevice(certificateChain: ByteArray): Unit =
             throw RuntimeException("Registration rejected")
         override suspend fun getPublicKey() = byteArrayOf(1, 2, 3)
-        override suspend fun submitDeviceBinding(payload: SecurePayload) {}
+        override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String) {}
     }
 
     private fun backendServiceKeyFails() = object : BackendService {
         override suspend fun getRegistrationChallenge() = byteArrayOf()
         override suspend fun registerDevice(certificateChain: ByteArray) {}
         override suspend fun getPublicKey(): ByteArray = throw RuntimeException("Network unavailable")
-        override suspend fun submitDeviceBinding(payload: SecurePayload) {}
+        override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String) {}
     }
 
     private fun backendServiceSubmitFails() = object : BackendService {
         override suspend fun getRegistrationChallenge() = byteArrayOf()
         override suspend fun registerDevice(certificateChain: ByteArray) {}
         override suspend fun getPublicKey() = byteArrayOf(1, 2, 3)
-        override suspend fun submitDeviceBinding(payload: SecurePayload): Unit =
+        override suspend fun submitDeviceBinding(payload: SecurePayload, integrityToken: String): Unit =
             throw RuntimeException("Submit failed")
     }
 
@@ -87,7 +87,7 @@ class PollyPaymentEngineTest {
 
     private fun cardReader(rawData: ByteArray = byteArrayOf(10, 20, 30)) =
         object : CardReadRepository {
-            override suspend fun readSecureData(amount: Double) = CardReadResult.Success(rawData)
+            override suspend fun readSecureData(amount: Double) = CardReadResult.Success(rawData, "test-token")
         }
 
     private fun cardReaderFails() = object : CardReadRepository {

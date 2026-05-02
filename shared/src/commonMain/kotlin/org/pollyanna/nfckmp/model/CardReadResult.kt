@@ -1,7 +1,7 @@
 package org.pollyanna.nfckmp.model
 
 sealed interface CardReadResult {
-    data class Success(val rawData: ByteArray) : CardReadResult {
+    data class Success(val rawData: ByteArray, val integrityToken: String) : CardReadResult {
         fun clear() = rawData.fill(0)
     }
     sealed class Failure : CardReadResult {

@@ -11,7 +11,7 @@ class AndroidDeviceSecurityRepository(
 
     override suspend fun encrypt(
         rawData: ByteArray,
-        publicKey: ByteArray
+        publicKey: ByteArray,
     ): SecurityResult {
         var encryptedData: ByteArray? = null
 
@@ -21,7 +21,7 @@ class AndroidDeviceSecurityRepository(
             SecurityResult.Success(
                 SecurePayload(
                     encryptedData = encryptedData,
-                    signature = signature
+                    signature = signature,
                 )
             )
         } catch (e: Exception) {

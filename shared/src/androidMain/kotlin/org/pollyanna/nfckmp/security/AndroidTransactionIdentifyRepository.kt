@@ -1,6 +1,5 @@
 package org.pollyanna.nfckmp.security
 
-import android.util.Base64
 import java.security.PrivateKey
 import java.security.Signature
 

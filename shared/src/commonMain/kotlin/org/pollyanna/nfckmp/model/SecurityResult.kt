@@ -4,7 +4,7 @@ import kotlin.io.encoding.Base64
 
 data class SecurePayload(
     val encryptedData: ByteArray,
-    val signature: ByteArray
+    val signature: ByteArray,
 ) {
     fun clear() {
         encryptedData.fill(0)
@@ -14,7 +14,7 @@ data class SecurePayload(
     fun toBase64Payload(): Map<String, String> {
         return mapOf(
             "encryptedData" to Base64.encode(encryptedData),
-            "signature" to Base64.encode(signature)
+            "signature" to Base64.encode(signature),
         )
     }
 }

@@ -9,7 +9,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 
-class AndroidCryptoDataSource(private val context: Context) : CryptoDataSource {
+class AndroidCryptoDataSource : CryptoDataSource {
     override fun encrypt(rawData: ByteArray, backendPublicKey: ByteArray): ByteArray {
         val keySpec = X509EncodedKeySpec(backendPublicKey)
         val publicKey = KeyFactory.getInstance("RSA").generatePublic(keySpec)

@@ -84,6 +84,7 @@ class PollyPaymentEngine(
                     logger.log(TAG, "Card read succeeded, encrypting data")
                     emit(PaymentState.Communicating)
 
+                    val integrityToken = cardResult.integrityToken
                     val securityResult = deviceSecurityRepository.encrypt(cardResult.rawData, backendKey)
                     cardResult.clear()
 
@@ -91,7 +92,7 @@ class PollyPaymentEngine(
                         is SecurityResult.Success -> {
                             logger.log(TAG, "Encryption succeeded, submitting to backend")
                             try {
-                                backendService.submitDeviceBinding(securityResult.payload)
+                                backendService.submitDeviceBinding(securityResult.payload, integrityToken)
                                 logger.log(TAG, "Transaction completed successfully")
                                 emit(PaymentState.Success)
                             } catch (e: Exception) {
