@@ -16,7 +16,7 @@ material3 = "1.10.0-alpha05"
 crypto = "1.1.0-alpha06"
 ktor = "3.4.3"
 coroutines = "1.10.2"
-pollySdk = "0.1.1"
+pollySdk = "0.1.2"
 
 [libraries]
 security-crypto = {module = "androidx.security:security-crypto", version.ref = "crypto"}

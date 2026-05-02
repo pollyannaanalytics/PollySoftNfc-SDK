@@ -306,7 +306,7 @@ In your app-level `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("org.pollyanna:shared:0.1.1")
+    implementation("org.pollyanna:shared:0.1.2")
 }
 ```
 
