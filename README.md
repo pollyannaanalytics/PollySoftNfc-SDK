@@ -36,7 +36,7 @@ Customer                    Merchant's Android Device
 | Concern | Handled by SDK |
 |---|---|
 | NFC card reading | Yes |
-| Device integrity check (root, debugger, Play Integrity) | Yes |
+| Device integrity check (root, debugger, Play Integrity) | Yes — root/debugger checks are real; Play Integrity token is mocked |
 | End-to-end encryption (RSA/OAEP, hardware-backed keys) | Yes |
 | Transaction signing (SHA256withRSA) | Yes |
 | Payment state management | Yes |
