@@ -2,7 +2,7 @@
 
 A Kotlin Multiplatform SDK that turns any Android device into an NFC payment terminal — no dedicated hardware required.
 
-> **Platform support:** Android only. iOS scaffolding exists but security and NFC integrations are not yet implemented.
+> **Platform support:** Android (production-ready) and iOS (PoC — architecture validated with mock implementations).
 
 ---
 
@@ -180,13 +180,115 @@ classDiagram
 PollySoftNfc-SDK/
 ├── shared/                         # SDK library (published to GitHub Packages)
 │   └── src/
-│       ├── commonMain/             # Engine + interfaces (platform-agnostic)
-│       ├── androidMain/            # Concrete implementations (NFC, Keystore, crypto)
-│       └── iosMain/                # iOS stubs (not yet implemented)
+│       ├── commonMain/             # Engine + interfaces + default compositions
+│       ├── androidMain/            # Android implementations (NFC, Keystore, crypto)
+│       └── iosMain/                # Minimal: factory + StateFlow bridge (2 files)
 ├── composeApp/                     # Demo Android app
-├── iosApp/                         # iOS app wrapper (Xcode)
+├── iosApp/                         # iOS demo app (SwiftUI + Swift mock implementations)
 └── .github/workflows/publish.yml  # CI: publishes on version tags
 ```
+
+---
+
+## iOS Architecture
+
+### Design Principle: Shared Core, Native Edges
+
+The iOS integration follows the **"Kotlin core + Swift boundary"** pattern recommended by the KMP community (Touchlab, Cash App, JetBrains). Business logic lives in Kotlin (`commonMain`), while all platform-specific code (Security.framework, Core NFC, App Attest) is written in **native Swift** and injected into the Kotlin engine.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  commonMain (Kotlin) — shared across Android and iOS             │
+│                                                                  │
+│  PollyPaymentEngine  ← state machine, orchestration              │
+│  DefaultCardReadRepository  ← composition logic (no platform deps)│
+│  DefaultDeviceSecurityRepository                                 │
+│  Interfaces: CryptoDataSource, AttestationCheckProvider,         │
+│              PaymentCardScanDataSource, TransactionIdentifyRepo  │
+│  Models, BackendService, MockBackendService                      │
+└──────────────────────────────────────────────────────────────────┘
+          ▲                                      ▲
+          │                                      │
+┌─────────┴────────────┐          ┌──────────────┴──────────────────┐
+│  androidMain (Kotlin) │          │  iosMain (Kotlin) — 2 files     │
+│  7 files              │          │                                  │
+│  Android Keystore,    │          │  PlatformProviderFactory         │
+│  NFC, Play Integrity  │          │    (accepts Swift implementations │
+│                       │          │     via constructor injection)   │
+│                       │          │  IosPaymentEngineObserver        │
+│                       │          │    (StateFlow → callback bridge) │
+└───────────────────────┘          └──────────────┬──────────────────┘
+                                                  │ Swift injection
+                                   ┌──────────────┴──────────────────┐
+                                   │  iosApp (Swift)                  │
+                                   │                                  │
+                                   │  SwiftMockNfcScanner             │
+                                   │  SwiftMockAttestationChecker     │
+                                   │  SwiftMockCryptoDataSource       │
+                                   │  SwiftMockTransactionIdentifyRepo│
+                                   │  PaymentViewModel (ObservableObj)│
+                                   │  ContentView (SwiftUI)           │
+                                   └──────────────────────────────────┘
+```
+
+### Why This Pattern?
+
+| Concern | Decision |
+|---|---|
+| iOS Security APIs (SecKey, Keychain) | Written in Swift — no Kotlin/Native cinterop complexity |
+| Engine logic, state machine | Shared in `commonMain` — one implementation for both platforms |
+| Composition logic (CardRead, DeviceSecurity) | Shared in `commonMain` via `Default*` classes |
+| iOS ↔ Kotlin bridge | Only 2 Kotlin files in `iosMain` — factory + StateFlow observer |
+
+### StateFlow / Coroutine Bridge
+
+Kotlin `StateFlow` and `suspend fun` cannot be consumed directly from Swift without additional libraries (SKIE, KMP-NativeCoroutines). The SDK provides `IosPaymentEngineObserver` as a thin bridge:
+
+```swift
+// Swift side — no coroutine knowledge required
+let observer = IosPaymentEngineObserver(engine: engine)
+
+// Observe state changes via callback (runs on main thread)
+observer.watchState { state in
+    self.state = AppPaymentState.from(state)
+}
+
+// Fire-and-forget calls (coroutines run internally)
+observer.initialize()
+observer.startTransaction(amount: 100.0)
+
+// Cleanup (call from deinit)
+observer.cancel()
+```
+
+### iOS Usage (SwiftUI)
+
+```swift
+let factory = PlatformProviderFactory(
+    scanner: SwiftMockNfcScanner(),
+    attestation: SwiftMockAttestationChecker(),
+    crypto: SwiftMockCryptoDataSource(),
+    transactionIdentify: SwiftMockTransactionIdentifyRepo()
+)
+let engine = PlatformProviderFactoryKt.createEngine(
+    factory,
+    backendService: MockBackendService(),
+    logger: PollyLoggerCompanion.shared.Default
+)
+```
+
+### Current Limitations (iOS)
+
+| Area | Status | Notes |
+|---|---|---|
+| NFC card reading | Mock | Production: use Core NFC `NFCISO7816Tag` or Apple Tap to Pay |
+| RSA encryption | Mock | Production: `SecKeyCreateEncryptedData` with `.rsaEncryptionOAEPSHA256` |
+| Transaction signing | Mock | Production: `SecKeyCreateSignature` with `.rsaSignatureMessagePKCS1v15SHA256` |
+| Key storage | Mock | Production: iOS Keychain or Secure Enclave (EC P-256 only for Secure Enclave) |
+| Device attestation | Mock | Production: `DCAppAttestService` (App Attest) + `DeviceCheck` fallback |
+| Jailbreak detection | Mock | Production: file path checks, sandbox write test, sysctl P_TRACED |
+| `ByteArray` interop | Working | Swift sees `KotlinByteArray`; helper extensions for `Data ↔ KotlinByteArray` included |
+| Sealed class naming | Working | Swift uses `PaymentState.FailedBackendError` instead of `PaymentState.Failed.BackendError` |
 
 ---
 

@@ -1,33 +1,52 @@
 import SwiftUI
-import Shared
 
 struct ContentView: View {
-    @State private var showContent = false
-    var body: some View {
-        VStack {
-            Button("Click me!") {
-                withAnimation {
-                    showContent = !showContent
-                }
-            }
+    @StateObject private var vm = PaymentViewModel()
 
-            if showContent {
-                VStack(spacing: 16) {
-                    Image(systemName: "swift")
-                        .font(.system(size: 200))
-                        .foregroundColor(.accentColor)
-                    Text("SwiftUI: \(Greeting().greet())")
+    var body: some View {
+        VStack(spacing: 32) {
+            VStack(spacing: 8) {
+                if vm.state.isLoading {
+                    ProgressView()
+                        .scaleEffect(1.5)
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                Text(vm.state.label)
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(labelColor)
+            }
+            .frame(maxHeight: 80)
+
+            VStack(spacing: 16) {
+                Button("Initialize Terminal") {
+                    vm.initialize()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(vm.state.isLoading)
+
+                Button("Charge $100") {
+                    vm.startTransaction(amount: 100.0)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(vm.state.isLoading)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding()
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var labelColor: Color {
+        switch vm.state {
+        case .success:                       return .green
+        case .failedNotInitialized,
+             .failedLocalSecurity,
+             .failedBackend:                 return .red
+        default:                             return .primary
+        }
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
+#Preview {
+    ContentView()
 }
