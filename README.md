@@ -2,7 +2,7 @@
 
 A Kotlin Multiplatform SDK that turns any Android device into an NFC payment terminal — no dedicated hardware required.
 
-> **Platform support:** Android only. iOS scaffolding exists but security and NFC integrations are not yet implemented.
+> **Platform support:** Android (full). iOS scaffolding exists; security and NFC integrations are not yet implemented.
 
 ---
 
@@ -33,14 +33,16 @@ Customer                    Merchant's Android Device
 
 ### What does the SDK handle?
 
-| Concern | Handled by SDK |
+| Concern | Status |
 |---|---|
-| NFC card reading | Yes |
-| Device integrity check (root, debugger, Play Integrity) | Yes — root/debugger checks are real; Play Integrity token is mocked |
-| End-to-end encryption (RSA/OAEP, hardware-backed keys) | Yes |
-| Transaction signing (SHA256withRSA) | Yes |
-| Payment state management | Yes |
-| Unit tests (engine state machine, error paths, sensitive data cleanup) | Yes |
+| NFC card reading | Architecture ready; APDU exchange mocked for demo |
+| Root & debugger detection | Real — binary path scan + build-tag check + `FLAG_DEBUGGABLE` |
+| Google Play Integrity | Real — `IntegrityManagerFactory` with per-transaction `SecureRandom` nonce |
+| End-to-end encryption (RSA-OAEP / SHA-256) | Real — hardware-backed Android Keystore |
+| Transaction signing (SHA256withRSA) | Real — hardware-backed Android Keystore |
+| Timeout & cancellation | Real — configurable via `EngineConfig`; `CancellationException` propagated correctly |
+| Payment state machine | Real — sealed `PaymentState` hierarchy with typed failure subtypes |
+| Unit tests (state machine, error paths, sensitive data cleanup) | Real — 30+ test cases |
 | Backend communication | **You implement** `BackendService` |
 
 ---
@@ -53,10 +55,12 @@ Customer                    Merchant's Android Device
 | Multiplatform | Kotlin Multiplatform Mobile (KMM) |
 | UI (demo app) | Compose Multiplatform 1.10.3 |
 | Async | Kotlin Coroutines 1.10.2 |
-| Encryption | Android Keystore (RSA/OAEP SHA-256) |
+| Internal DI | Koin 4.0.0 (isolated `koinApplication` — invisible to host app) |
+| Encryption | Android Keystore (RSA-OAEP / SHA-256) |
 | Signing | SHA256withRSA via Android Keystore |
-| Security | Root detection, debugger detection, Play Integrity API |
-| Key storage | AndroidKeyStore (hardware-backed) |
+| Device integrity | Google Play Integrity API 1.4.0 |
+| Local security | Root detection, debugger detection |
+| Key storage | AndroidKeyStore (hardware-backed, non-exportable) |
 | Build system | Gradle 8.14.3 (Kotlin DSL) |
 | Min SDK | Android API 30 |
 | Target SDK | Android API 36 |
@@ -72,7 +76,7 @@ Customer                    Merchant's Android Device
 ```mermaid
 flowchart TD
     subgraph host["Host App"]
-        Factory["PlatformProviderFactory\n─────────────────────\nComposition root\nHolds Android Context\nConstructs & wires all deps"]
+        PollyNfc["PollyNfc\n─────────────────────\nSDK entry point\nHolds Android Context\nWires all deps internally via Koin"]
     end
 
     subgraph sdk["SDK · commonMain  (platform-agnostic)"]
@@ -83,9 +87,9 @@ flowchart TD
         BSI(["BackendService\nNetwork boundary"])
     end
 
-    Factory -->|"assembles via createEngine()"| Engine
-    Factory -.->|"creates Android impl"| CR
-    Factory -.->|"creates Android impl"| DSR
+    PollyNfc -->|"assembles via createEngine()"| Engine
+    PollyNfc -.->|"creates Android impl (Koin)"| CR
+    PollyNfc -.->|"creates Android impl (Koin)"| DSR
     BS -.->|"implements"| BSI
 
     Engine -->|"read card data"| CR
@@ -97,29 +101,46 @@ flowchart TD
 
 ### Part 2 — Dependency Injection Diagram
 
+All internal wiring is handled by an isolated `koinApplication` instance created inside `PollyNfc`. The host app never interacts with Koin directly.
+
 ```mermaid
 classDiagram
     namespace HostApp {
-        class PlatformProviderFactory {
+        class PollyNfc {
             <<Android>>
             -context : Context
-            +createCardReadRepository() CardReadRepository
-            +createDeviceSecurityRepository() DeviceSecurityRepository
-            +createEngine(backendService) PollyPaymentEngine
+            +createEngine(backendService, config, logger) PollyPaymentEngine
         }
     }
-    
+
+    namespace InternalKoinModule {
+        class pollyNfcModule {
+            <<Koin module>>
+            AndroidCardReadRepository
+            AndroidDeviceSecurityRepository
+            AndroidAttestationCheckProvider
+            AndroidNfcScanDataSource
+            AndroidPrivateKeyDataSource
+            AndroidCryptoDataSource
+            AndroidTransactionIdentifyRepository
+        }
+    }
+
     namespace RealBackend {
         class BackendServiceImpl
     }
 
     namespace SDKCommonMain {
+        class EngineConfig {
+            +networkTimeoutMs : Long
+            +cardReadTimeoutMs : Long
+        }
         class BackendService {
             <<interface>>
-            +getRegistrationChallenge() String
+            +getRegistrationChallenge() ByteArray
             +registerDevice(certs) Unit
             +getPublicKey() ByteArray
-            +submitDeviceBinding(payload) Unit
+            +submitDeviceBinding(payload, token) Unit
         }
         class PollyPaymentEngine {
             +paymentState : StateFlow~PaymentState~
@@ -132,7 +153,7 @@ classDiagram
         }
         class DeviceSecurityRepository {
             <<interface>>
-            +getRegistrationCertificate(challenge) List~String~
+            +getRegistrationCertificate(challenge) ByteArray?
             +encrypt(data, publicKey) SecurityResult
         }
     }
@@ -140,38 +161,35 @@ classDiagram
     namespace SDKAndroidMain {
         class AndroidCardReadRepository {
             -scanner : AndroidNfcScanDataSource
-            -attestationChecker : AndroidAttestationCheckProvider
+            -securityChecker : AndroidAttestationCheckProvider
         }
-        class AndroidNfcScanDataSource
-        class AndroidAttestationCheckProvider
+        class AndroidAttestationCheckProvider {
+            +checkLocalSecurity() Boolean
+            +fetchHardwareAssertion() String
+        }
         class AndroidDeviceSecurityRepository {
             -cryptoDataSource : AndroidCryptoDataSource
             -transactionRepo : AndroidTransactionIdentifyRepository
         }
-        class AndroidCryptoDataSource
         class AndroidTransactionIdentifyRepository {
             -privateKeyDataSource : AndroidPrivateKeyDataSource
         }
-        class AndroidPrivateKeyDataSource
     }
 
-    PlatformProviderFactory ..> AndroidCardReadRepository       : creates
-    PlatformProviderFactory ..> AndroidDeviceSecurityRepository  : creates
-    PlatformProviderFactory ..> PollyPaymentEngine               : assembles
+    PollyNfc ..> pollyNfcModule          : creates isolated koinApplication
+    PollyNfc ..> PollyPaymentEngine      : assembles
+
+    pollyNfcModule ..> AndroidCardReadRepository       : provides
+    pollyNfcModule ..> AndroidDeviceSecurityRepository  : provides
 
     AndroidCardReadRepository       ..|> CardReadRepository
     AndroidDeviceSecurityRepository ..|> DeviceSecurityRepository
-    BackendServiceImpl ..|> BackendService : network communication
-
-    AndroidCardReadRepository       *-- AndroidNfcScanDataSource
-    AndroidCardReadRepository       *-- AndroidAttestationCheckProvider
-    AndroidDeviceSecurityRepository *-- AndroidCryptoDataSource
-    AndroidDeviceSecurityRepository *-- AndroidTransactionIdentifyRepository
-    AndroidTransactionIdentifyRepository *-- AndroidPrivateKeyDataSource
+    BackendServiceImpl              ..|> BackendService
 
     PollyPaymentEngine --> CardReadRepository       : injected
     PollyPaymentEngine --> DeviceSecurityRepository  : injected
     PollyPaymentEngine --> BackendService            : injected
+    PollyPaymentEngine --> EngineConfig              : injected
 ```
 
 ### Module Layout
@@ -181,11 +199,56 @@ PollySoftNfc-SDK/
 ├── shared/                         # SDK library (published to GitHub Packages)
 │   └── src/
 │       ├── commonMain/             # Engine + interfaces (platform-agnostic)
-│       ├── androidMain/            # Concrete implementations (NFC, Keystore, crypto)
+│       │   └── ...nfckmp/
+│       │       ├── PollyNfc.kt         # expect entry point
+│       │       ├── PollyPaymentEngine.kt
+│       │       ├── EngineConfig.kt
+│       │       ├── model/              # PaymentState, CardReadResult, SecurityResult …
+│       │       ├── network/            # BackendService interface
+│       │       ├── nfc_provider/       # CardReadRepository interface
+│       │       └── security/           # DeviceSecurityRepository interface
+│       ├── androidMain/            # Concrete implementations
+│       │   └── ...nfckmp/
+│       │       ├── PollyNfc.android.kt # actual — wires deps via Koin
+│       │       ├── di/PollyNfcModule.kt
+│       │       ├── nfc_provider/       # AndroidCardReadRepository, NfcScanDataSource
+│       │       └── security/           # Keystore, crypto, attestation, Play Integrity
 │       └── iosMain/                # iOS stubs (not yet implemented)
 ├── composeApp/                     # Demo Android app
 ├── iosApp/                         # iOS app wrapper (Xcode)
 └── .github/workflows/publish.yml  # CI: publishes on version tags
+```
+
+---
+
+## Security Architecture
+
+The SDK is designed around the principle that **plaintext card data never leaves the device**. The layers below map directly to common PCI P2PE concepts, even though this project does not claim PCI certification.
+
+| Layer | Mechanism | Implementation |
+|---|---|---|
+| Key isolation | Hardware-backed RSA key | Android Keystore — key material is non-exportable and lives in the Secure Element |
+| Device attestation | Certificate chain bound to a challenge | `KeyGenParameterSpec.setAttestationChallenge()` — backend verifies the chain against Google's root CA |
+| P2PE encryption | RSA-OAEP (SHA-256 / MGF1-SHA-256) | Card data is encrypted on-device with the backend's public key before any network call |
+| Payload signing | SHA256withRSA | Encrypted payload is signed with the device's private key so the backend can verify origin |
+| Device integrity | Root + debugger detection + Play Integrity | Local checks run before every NFC read; Play Integrity token is verified server-side |
+| Sensitive data lifecycle | Explicit memory zeroing | `ByteArray.fill(0)` on raw card data, public key, and `SecurePayload` immediately after use — regardless of success or failure |
+
+### Play Integrity flow
+
+```
+AndroidAttestationCheckProvider          Google Play Integrity API
+         │                                          │
+         │── requestIntegrityToken(nonce) ─────────▶│
+         │   (nonce = SecureRandom 24 bytes,        │
+         │    Base64 URL-safe encoded)               │
+         │◀─ signed JWT ─────────────────────────── │
+         │                                           │
+         └── integrityToken ──▶ BackendService.submitDeviceBinding()
+                                        │
+                               [your backend verifies
+                                token with Google API
+                                before processing payment]
 ```
 
 ---
@@ -200,22 +263,22 @@ The engine operates in two distinct stages: **Initialization** and **Transaction
 Host App                 PollyPaymentEngine              Backend
     │                           │                           │
     │──── initialize() ────────▶│                           │
-    │                           │── fetchChallenge() ──────▶│
+    │                           │── getRegistrationChallenge() ▶│
     │                           │◀─ challenge ──────────────│
     │                           │                           │
     │                           │  [generate RSA key pair   │
     │                           │   in Android Keystore     │
-    │                           │   with hardware attest]   │
+    │                           │   bound to challenge]     │
     │                           │                           │
     │                           │── registerDevice() ──────▶│
     │                           │   (certificate chain)     │
-    │◀── PaymentState.Idle ─────│◀─ accessToken ────────────│
+    │◀── PaymentState.Idle ─────│◀─ 200 OK ─────────────────│
 ```
 
 1. Fetch a one-time challenge from the backend.
-2. Generate a hardware-backed RSA key pair in the Android Keystore.
+2. Generate a hardware-backed RSA key pair in the Android Keystore, bound to the challenge.
 3. Produce an attestation certificate chain proving the key lives in secure hardware.
-4. Register the device with the backend; receive an access token.
+4. Register the device; the backend verifies the chain against Google's root CA.
 
 ---
 
@@ -225,26 +288,28 @@ Host App                 PollyPaymentEngine              Backend
 Host App             PollyPaymentEngine        Card (NFC)       Backend
     │                        │                     │                │
     │── startTransaction() ─▶│                     │                │
-    │                        │── fetchPublicKey() ────────────────▶│
-    │◀─ WaitingForCard ──────│◀────────────────── backendPubKey ───│
+    │                        │── getPublicKey() ──────────────────▶│
+    │◀─ WaitingForCard ──────│◀────────────── backendPubKey ───────│
+    │                        │                     │                │
+    │                        │  [root / debugger   │                │
+    │                        │   check]            │                │
+    │                        │── fetchHardwareAssertion() ─▶ Play Integrity API
+    │                        │◀─────────────── integrityToken ──────│
     │                        │                     │                │
     │                        │◀──── NFC tap ───────│                │
     │◀─ Communicating ───────│   [read card data   │                │
     │                        │    via APDU]        │                │
     │                        │                     │                │
-    │                        │  [security checks:  │                │
-    │                        │   root, debugger]   │                │
+    │                        │  [encrypt with      │                │
+    │                        │   RSA-OAEP]         │                │
+    │                        │  [sign with         │                │
+    │                        │   SHA256withRSA]    │                │
+    │                        │  [zero rawData &    │                │
+    │                        │   publicKey]        │                │
     │                        │                     │                │
-    │                        │  [encrypt card data │                │
-    │                        │   with backend pub  │                │
-    │                        │   key (RSA/OAEP)]   │                │
-    │                        │                     │                │
-    │                        │  [sign payload with │                │
-    │                        │   device private key│                │
-    │                        │   (SHA256withRSA)]  │                │
-    │                        │                     │                │
-    │                        │── submitTransaction() ─────────────▶│
+    │                        │── submitDeviceBinding() ────────────▶│
     │◀─ Success / Failed ────│◀──────────────────────── result ────│
+    │                        │  [zero SecurePayload]│               │
 ```
 
 ### Payment States
@@ -258,8 +323,10 @@ PaymentState
 ├── Success                     # Transaction accepted by backend
 └── Failed
     ├── NotInitialized          # startTransaction called before initialize
-    ├── LocalSecurityFailed     # Root/debugger detected, or encryption error
-    └── BackendError(message)   # Network or backend rejection
+    ├── LocalSecurityFailed     # Root/debugger detected, key attestation unavailable,
+    │                           # or encryption error
+    ├── BackendError(message)   # Network error or backend rejection
+    └── TimedOut                # A step exceeded EngineConfig timeout
 ```
 
 ---
@@ -323,41 +390,75 @@ In your `AndroidManifest.xml`:
 
 ## Usage
 
-### Implement BackendService
+### Step 1 — Implement BackendService
 
 The only interface you must implement is `BackendService`, which connects the SDK to your own server. A `MockBackendService` is included for local testing and development.
 
-| Method | Called when | What to send | What to return |
-|---|---|---|---|
-| `getRegistrationChallenge()` | Device initialization starts | — | A random nonce (`ByteArray`, e.g. 32 bytes) to bind the key generation to this specific request |
-| `registerDevice(certificateChain)` | After hardware key generation | DER-encoded X.509 certificate chain (leaf + intermediates, concatenated) from Android Keystore attestation | — |
-| `getPublicKey()` | Start of every transaction | — | Your server's RSA public key in DER format; the SDK uses it to encrypt card data so only your server can decrypt it |
-| `submitDeviceBinding(payload, integrityToken)` | After card data is encrypted and signed | `payload.encryptedData` (RSA/OAEP encrypted card data), `payload.signature` (SHA256withRSA over encrypted data), `integrityToken` (Play Integrity JWT — verify with Google before processing) | — |
+| Method | Called when | What to do on your backend |
+|---|---|---|
+| `getRegistrationChallenge()` | Device init starts | Generate a cryptographically random nonce; store it for later verification |
+| `registerDevice(certificateChain)` | After key generation | Parse & verify the DER-encoded X.509 chain against Google's root CA; store the leaf cert |
+| `getPublicKey()` | Start of every transaction | Return your server's RSA public key (DER-encoded SubjectPublicKeyInfo) |
+| `submitDeviceBinding(payload, integrityToken)` | After card data is encrypted | Verify `integrityToken` with Google Play Integrity API; decrypt `payload.encryptedData`; verify `payload.signature` against the stored device cert; forward to payment processor |
 
-### Wire up the engine
+### Step 2 — Create the engine
 
 ```kotlin
-val engine = PlatformProviderFactory(context)
+// 1. Create via PollyNfc — all internal wiring is handled automatically
+val engine = PollyNfc(context)
     .createEngine(backendService = YourBackendServiceImpl())
 
-// Observe state
+// Optional: tune timeouts
+val engine = PollyNfc(context)
+    .createEngine(
+        backendService = YourBackendServiceImpl(),
+        config = EngineConfig(
+            networkTimeoutMs = 15_000L,   // default: 30 s
+            cardReadTimeoutMs = 30_000L,  // default: 60 s
+        ),
+        logger = PollyLogger.Silent,      // suppress SDK logs in production
+    )
+```
+
+### Step 3 — Observe state and run transactions
+
+```kotlin
+// Observe payment state (e.g. inside a ViewModel)
 lifecycleScope.launch {
     engine.paymentState.collect { state ->
         when (state) {
-            is PaymentState.Idle           -> showReadyUI()
-            is PaymentState.WaitingForCard -> showTapCardPrompt()
-            is PaymentState.Communicating  -> showLoadingUI()
-            is PaymentState.Success        -> showSuccess()
-            is PaymentState.Failed         -> showError(state)
+            is PaymentState.Idle             -> showReadyUI()
+            is PaymentState.Initializing     -> showLoadingUI()
+            is PaymentState.WaitingForCard   -> showTapCardPrompt()
+            is PaymentState.Communicating    -> showLoadingUI()
+            is PaymentState.Success          -> showSuccess()
+            is PaymentState.Failed.NotInitialized   -> showError("Please initialize first")
+            is PaymentState.Failed.LocalSecurityFailed -> showError("Device security check failed")
+            is PaymentState.Failed.BackendError -> showError(state.message)
+            is PaymentState.Failed.TimedOut  -> showError("Request timed out — please try again")
         }
     }
 }
 
-// Initialize once (e.g. on app start)
+// Initialize once (e.g. on app start or ViewModel init)
 lifecycleScope.launch { engine.initialize() }
 
-// Start a transaction when the merchant is ready to receive payment
+// Start a transaction when the merchant is ready to accept payment
 lifecycleScope.launch { engine.startTransaction(amount = 49.99) }
+```
+
+### ViewModel integration
+
+```kotlin
+class PaymentViewModel(application: Application) : AndroidViewModel(application) {
+    private val engine = PollyNfc(application)
+        .createEngine(backendService = YourBackendServiceImpl())
+
+    val paymentState = engine.paymentState   // expose as StateFlow to the UI
+
+    fun initialize() = viewModelScope.launch { engine.initialize() }
+    fun pay(amount: Double) = viewModelScope.launch { engine.startTransaction(amount) }
+}
 ```
 
 ---
