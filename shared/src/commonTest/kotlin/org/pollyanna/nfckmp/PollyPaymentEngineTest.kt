@@ -156,11 +156,11 @@ class PollyPaymentEngineTest {
     }
 
     @Test
-    fun initCertNullLeavesEngineUninitialized() = runTest {
+    fun initCertNullEmitsLocalSecurityFailed() = runTest {
         val engine = engine(deviceSecurityRepository = securityRepositoryCertNull())
         engine.initialize()
-        // cert null → silent failure, state stays at Initializing, engine not ready
-        assertEquals(PaymentState.Initializing, engine.paymentState.value)
+        assertEquals(PaymentState.Failed.LocalSecurityFailed, engine.paymentState.value)
+        // engine is not initialized, so a subsequent transaction must also fail
         engine.startTransaction(19.99)
         assertEquals(PaymentState.Failed.NotInitialized, engine.paymentState.value)
     }
