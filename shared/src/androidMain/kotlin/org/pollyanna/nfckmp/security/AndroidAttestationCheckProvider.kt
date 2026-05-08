@@ -3,9 +3,16 @@ package org.pollyanna.nfckmp.security
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
+import android.util.Base64
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityTokenRequest
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.pollyanna.nfckmp.shared.BuildConfig
 import java.io.File
+import java.security.SecureRandom
 import java.util.Scanner
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 sealed class LocalSecurityException(message: String) : SecurityException(message) {
     class RootedDevices(detail: String) : LocalSecurityException("Security Violation: Device is rooted ($detail)")
@@ -18,6 +25,7 @@ data class RootResult(
 )
 
 class AndroidAttestationCheckProvider(private val context: Context) : AttestationCheckProvider {
+
     override fun checkLocalSecurity(): Boolean {
         val rootCheck = getRootCheckResult()
         if (rootCheck.isRooted) {
@@ -82,12 +90,32 @@ class AndroidAttestationCheckProvider(private val context: Context) : Attestatio
 
         return RootResult(false)
     }
+
     private fun isDebuggerAttached(): Boolean {
         return context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     }
 
-    private fun fetchPlayIntegrityToken(): String {
-        // mock token fetching from Google integrity api
-        return "mockTokenFromIntegrityApi"
+    private suspend fun fetchPlayIntegrityToken(): String {
+        val nonce = generateNonce()
+        val manager = IntegrityManagerFactory.create(context)
+        val request = IntegrityTokenRequest.newBuilder()
+            .setNonce(nonce)
+            .build()
+
+        return suspendCancellableCoroutine { cont ->
+            manager.requestIntegrityToken(request)
+                .addOnSuccessListener { response ->
+                    if (cont.isActive) cont.resume(response.token())
+                }
+                .addOnFailureListener { exception ->
+                    if (cont.isActive) cont.resumeWithException(exception)
+                }
+        }
+    }
+
+    private fun generateNonce(): String {
+        val bytes = ByteArray(24)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP)
     }
 }
