@@ -38,6 +38,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.security.crypto)
             implementation(libs.koin.core)
+            implementation(libs.play.integrity)
         }
     }
 }
