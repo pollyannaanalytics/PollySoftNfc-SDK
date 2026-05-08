@@ -17,9 +17,11 @@ crypto = "1.1.0-alpha06"
 ktor = "3.4.3"
 coroutines = "1.10.2"
 pollySdk = "0.1.2"
+koin = "4.0.0"
 
 [libraries]
 security-crypto = {module = "androidx.security:security-crypto", version.ref = "crypto"}
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
